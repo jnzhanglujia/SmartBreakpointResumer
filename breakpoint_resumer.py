@@ -34,6 +34,7 @@ clipboard_text = ""
 screenshot_path = ""
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
 _last_screenshot_proc = threading.local()
+dismiss_event = threading.Event()
 
 def safe_print(*args, **kwargs):
     text = " ".join(str(a) for a in args)
@@ -148,11 +149,11 @@ def wait_silent_phase():
 
 def wait_reminder_phase():
     n = 0
-    while not stop_listener:
+    while not dismiss_event.is_set():
         n += 1
         show_toast_notification(window_title, clipboard_text, n)
         for _ in range(REMINDER_INTERVAL):
-            if stop_listener:
+            if dismiss_event.is_set():
                 return
             time.sleep(1)
 
@@ -180,6 +181,7 @@ def open_screenshot():
 def capture_and_monitor():
     global is_active, stop_listener, window_title, clipboard_text, screenshot_path
 
+    dismiss_event.clear()
     is_active = False
     stop_listener = False
     screenshot_path = ""
@@ -225,35 +227,48 @@ def capture_and_monitor():
 
     wait_silent_phase()
 
-    if is_active:
+    if is_active or dismiss_event.is_set():
         logger.info("用户已回归，任务自动取消，不发送提醒")
         safe_print("\n检测到您已回归，任务已自动取消。")
         return
 
     logger.info("用户未回归，进入持续提醒阶段")
-    safe_print("\n静默期结束，将持续提醒直到检测到您回归...")
-    safe_print("   按 Ctrl+C 可手动退出\n")
+    safe_print(f"\n静默期结束，将持续提醒直到您确认回归（按 Ctrl+Alt+D 解除提醒）...")
+    safe_print(f"   注意：提醒期间普通键鼠操作不会关闭提醒")
+    safe_print(f"   按 Ctrl+C 可手动退出\n")
 
     wait_reminder_phase()
 
-    open_screenshot()
-    logger.info("用户已回归，提醒终止")
-    safe_print("\n检测到您已回归，提醒已终止。")
-    safe_print(f"   当时截图已打开，10 秒后自动关闭")
-    safe_print(f"   或直接关掉截图窗口即可")
-    time.sleep(10)
     close_current_screenshot()
+    logger.info("用户已确认回归，提醒解除")
+    safe_print("\n已解除提醒，您可以继续工作了。")
+
+    try:
+        notification.notify(
+            title="提醒已解除",
+            message="已确认您已回归，祝工作顺利！",
+            timeout=3,
+        )
+    except Exception:
+        pass
 
 def run_single():
     capture_and_monitor()
 
+def on_dismiss():
+    logger.info("用户按下 Ctrl+Alt+D，解除提醒")
+    dismiss_event.set()
+
 def run_daemon():
-    safe_print("后台监听模式启动中，按 Ctrl+Alt+B 触发断点记录...")
+    safe_print("后台监听模式启动中...")
+    safe_print("   Ctrl+Alt+B  记录断点")
+    safe_print("   Ctrl+Alt+D  解除当前提醒")
     safe_print("   按 Ctrl+C 可退出\n")
     logger.info("后台监听模式启动")
 
     hotkey = keyboard.GlobalHotKeys({
-        '<ctrl>+<alt>+b': lambda: threading.Thread(target=capture_and_monitor, daemon=True).start()
+        '<ctrl>+<alt>+b': lambda: threading.Thread(target=capture_and_monitor, daemon=True).start(),
+        '<ctrl>+<alt>+d': on_dismiss,
     })
     hotkey.start()
     hotkey.join()
