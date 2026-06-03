@@ -33,6 +33,7 @@ window_title = ""
 clipboard_text = ""
 screenshot_path = ""
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
+_last_screenshot_proc = threading.local()
 
 def safe_print(*args, **kwargs):
     text = " ".join(str(a) for a in args)
@@ -156,10 +157,20 @@ def wait_reminder_phase():
             time.sleep(1)
 
 def open_screenshot():
+    global screenshot_path
     if screenshot_path and os.path.exists(screenshot_path):
         try:
+            prev = getattr(_last_screenshot_proc, 'handle', None)
+            if prev is not None:
+                try:
+                    prev.kill()
+                    prev.wait(timeout=2)
+                    logger.info("已关闭上一个截图")
+                except Exception:
+                    pass
             abs_path = os.path.abspath(screenshot_path)
-            subprocess.Popen(['cmd.exe', '/c', 'start', '', abs_path], shell=False)
+            proc = subprocess.Popen(['cmd.exe', '/c', 'start', '', abs_path], shell=False)
+            _last_screenshot_proc.handle = proc
             logger.info(f"已打开截图: {abs_path}")
         except Exception as e:
             logger.warning(f"打开截图失败: {e}")
