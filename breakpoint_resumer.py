@@ -24,10 +24,13 @@ try:
 except ImportError:
     _HAS_TK = False
 
+log_handlers = [logging.FileHandler(os.path.join(get_base_dir(), "breakpoint_resumer.log"), encoding="utf-8")]
+if not getattr(sys, 'frozen', False):
+    log_handlers.append(logging.StreamHandler(sys.stderr))
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler("breakpoint_resumer.log", encoding="utf-8"), logging.StreamHandler(sys.stderr)],
+    handlers=log_handlers,
 )
 logger = logging.getLogger(__name__)
 
@@ -41,12 +44,19 @@ stop_listener = False
 window_title = ""
 clipboard_text = ""
 screenshot_path = ""
-SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
-RECORDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "records.json")
+def get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+SCREENSHOTS_DIR = os.path.join(get_base_dir(), "screenshots")
+RECORDS_FILE = os.path.join(get_base_dir(), "records.json")
 _last_screenshot_proc = threading.local()
 dismiss_event = threading.Event()
 
 def safe_print(*args, **kwargs):
+    if getattr(sys, 'frozen', False):
+        return
     text = " ".join(str(a) for a in args)
     text = re.sub(r'[^\x00-\x7F\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]', '', text)
     try:
@@ -436,11 +446,16 @@ def run_daemon():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="智能断点续传助手")
-    parser.add_argument("--listen", action="store_true", help="后台监听模式，注册全局快捷键 Ctrl+Alt+B")
-    args = parser.parse_args()
+    parser.add_argument("--listen", action="store_true", help="后台监听模式")
+    parser.add_argument("--single", action="store_true", help="单次模式（脚本默认）")
+
+    if getattr(sys, 'frozen', False) and not any(a in sys.argv for a in ['--listen', '--single']):
+        args = argparse.Namespace(listen=True, single=False)
+    else:
+        args = parser.parse_args()
 
     try:
-        if args.listen:
+        if args.listen or (getattr(sys, 'frozen', False) and not args.single):
             run_daemon()
         else:
             run_single()
