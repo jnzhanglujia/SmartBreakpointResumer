@@ -156,18 +156,20 @@ def wait_reminder_phase():
                 return
             time.sleep(1)
 
+def close_current_screenshot():
+    proc = getattr(_last_screenshot_proc, 'handle', None)
+    if proc is not None:
+        try:
+            proc.kill()
+            logger.info("已关闭截图")
+        except Exception:
+            pass
+
 def open_screenshot():
     global screenshot_path
     if screenshot_path and os.path.exists(screenshot_path):
         try:
-            prev = getattr(_last_screenshot_proc, 'handle', None)
-            if prev is not None:
-                try:
-                    prev.kill()
-                    prev.wait(timeout=2)
-                    logger.info("已关闭上一个截图")
-                except Exception:
-                    pass
+            close_current_screenshot()
             abs_path = os.path.abspath(screenshot_path)
             proc = subprocess.Popen(['cmd.exe', '/c', 'start', '', abs_path], shell=False)
             _last_screenshot_proc.handle = proc
@@ -237,7 +239,10 @@ def capture_and_monitor():
     open_screenshot()
     logger.info("用户已回归，提醒终止")
     safe_print("\n检测到您已回归，提醒已终止。")
-    safe_print(f"   当时截图已打开: {screenshot_path}")
+    safe_print(f"   当时截图已打开，10 秒后自动关闭")
+    safe_print(f"   或直接关掉截图窗口即可")
+    time.sleep(10)
+    close_current_screenshot()
 
 def run_single():
     capture_and_monitor()
